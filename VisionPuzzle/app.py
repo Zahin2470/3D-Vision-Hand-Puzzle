@@ -51,7 +51,7 @@ class VisionPuzzleApp:
         self._fps_t = time.perf_counter()
 
         self.mode = Mode.SELECT
-        self.grid = 3
+        self.grid = 4
         self._corner_a: Optional[tuple[float, float]] = None
         self._corner_b: Optional[tuple[float, float]] = None
         self._smooth_a: Optional[tuple[float, float]] = None

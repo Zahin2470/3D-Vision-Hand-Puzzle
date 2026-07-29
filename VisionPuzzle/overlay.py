@@ -101,7 +101,7 @@ def draw_dual_selection(
     *,
     locked: bool = False,
     active: bool = False,
-    grid: int = 3,
+    grid: int = 4,
     label: str = "",
 ) -> np.ndarray:
     h, w = frame.shape[:2]
