@@ -176,14 +176,14 @@ This is where every session begins.
 
 ```
 3D-Untouch-Puzzle/
-├── main.py                       ← where execution begins
-├── requirements.txt               ← the dependency manifest
-├── README.md
+├── main.py                         ← where execution begins
+├── requirements.txt                ← the dependency manifest
+├── README.md                       ← instructions, tips, and project overview
 │
-└── VisionPuzzle/                     ← the application package
-    ├── app.py                     ← VisionPuzzleApp — orchestrates the main loop
-    ├── tracker.py                 ← MediaPipe wrapper + landmark smoothing
-    ├── pointer.py                 ← dual-hand pinch & gesture recognition
+└── VisionPuzzle/                   ← the application package
+    ├── app.py                      ← VisionPuzzleApp — orchestrates the main loop
+    ├── tracker.py                  ← MediaPipe wrapper + landmark smoothing
+    ├── pointer.py                  ← dual-hand pinch & gesture recognition
     ├── landmarks.py                ← landmark math and helpers
     ├── jigsaw.py                   ← puzzle grid, pieces, win logic
     ├── effects.py                  ← animations and visual transitions
@@ -347,8 +347,6 @@ A few directions this project could grow into:
 ---
 
 <div align="center">
-
-**Part of the 3D Learning Model initiative.**
 
 *Frame it. Shatter it. Put it back together — with your hands.* 🧩
 
