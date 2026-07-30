@@ -2,3 +2,4 @@
 opencv-python>=4.9.0
 mediapipe>=0.10.9
 numpy>=1.26.0
+pygame>=2.5.0

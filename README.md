@@ -10,6 +10,7 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.9%2B-00897B?style=for-the-badge&logo=google&logoColor=white)](#-requirements)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.9%2B-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)](#-requirements)
 [![NumPy](https://img.shields.io/badge/NumPy-1.26%2B-013243?style=for-the-badge&logo=numpy&logoColor=white)](#-requirements)
+[![Pygame](https://img.shields.io/badge/Pygame-2.5%2B-6A5ACD?style=for-the-badge&logo=python&logoColor=white)](#-requirements)
 
 [![Status](https://img.shields.io/badge/status-active-brightgreen?style=for-the-badge)](#-license)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge)](#-license)
@@ -81,6 +82,9 @@ Choose between **3×3, 4×4, and 5×5** grids on the fly. Pieces snap into place
 
 ### 🎨 Live Visual Feedback
 Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebratory win animation** keep you oriented at every step. 🏆
+
+### 🎧 Ambient Audio
+A looping music bed **crossfades** between Selection and Play modes, with punchy one-shot SFX for pinches, locks, snaps, shuffles, and the win moment. Press `M` to mute anytime. 🔊
 
 </td>
 </tr>
@@ -202,6 +206,7 @@ This is where every session begins.
 | `R` | Play | Shuffle every piece back to random spots |
 | `N` | Anywhere | Return to Selection Mode for a new capture |
 | `H` | Anywhere | Show or hide the help overlay |
+| `M` | Anywhere | Mute or unmute audio |
 | `Q` / `Esc` | Anywhere | Exit the app |
 
 </div>
@@ -224,11 +229,16 @@ This is where every session begins.
     ├── 🧩 jigsaw.py                ← puzzle grid, pieces, win logic
     ├── 🎆 effects.py               ← animations and visual transitions
     ├── 🎨 overlay.py               ← everything drawn onto the frame
+    ├── 🎧 audio.py                 ← AudioManager — ambient music + SFX
     ├── 🧰 ui.py                    ← shared UI constants and helpers
     │
     ├── 📦 models/
     │   ├── hand_landmarker.task    ← MediaPipe's hand detection model
     │   └── gesture_recognizer.task ← gesture classification model
+    │
+    ├── 🎵 assets/audio/
+    │   ├── music/                  ← select.ogg, play.ogg (looping beds)
+    │   └── sfx/                    ← pinch / lock / snap / shuffle / win
     │
     └── 🗂️ snapshots/               ← cached puzzle captures
 ```
