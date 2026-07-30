@@ -43,7 +43,7 @@
 ## 💡 Why It Exists
 
 > [!TIP]
-> Most puzzle apps hand you a mouse and call it interactive. **VisionPuzzle Studio asks for more.**
+> Most puzzle apps hand you a mouse and call it interactive. **Vision Hand Puzzle asks for more.**
 
 It watches your hands, understands pinches as intent, and lets two-handed coordination drive the *entire* experience — from carving out a region of the camera feed to sliding the final piece home. 🎯
 
@@ -421,6 +421,6 @@ Latency: 12ms
 
 <br>
 
-**⭐ Star this repo if VisionPuzzle Studio made you smile ⭐**
+**⭐ Star this repo if Vision Hand Puzzle made you smile ⭐**
 
 </div>

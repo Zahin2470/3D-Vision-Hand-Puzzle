@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VisionPuzzle Studio — premium dual-hand camera jigsaw.
+"""Vision Hand Puzzle - premium dual-hand camera jigsaw.
 
 Run
 ---

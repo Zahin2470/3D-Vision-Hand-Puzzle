@@ -1,4 +1,4 @@
-"""VisionPuzzle Studio — fast dual-hand jigsaw, clean screen, full-res display."""
+"""Vision Hand Puzzle — fast dual-hand jigsaw, clean screen, full-res display."""
 
 from __future__ import annotations
 
@@ -191,7 +191,7 @@ class VisionPuzzleApp:
 
         frame, _ = draw_hud(
             frame,
-            title="STUDIO",
+            title="ZAHIN",
             extra=f"{self.grid}×{self.grid}",
         )
         if self.show_help:
@@ -297,7 +297,7 @@ class VisionPuzzleApp:
 
         frame, self._progress_disp = draw_hud(
             frame,
-            title="STUDIO",
+            title="ZAHIN",
             extra=f"{self.puzzle.placed_count}/{self.puzzle.total}",
             progress=progress,
             progress_display=self._progress_disp,
