@@ -129,6 +129,28 @@ def glass_panel(
     return frame
 
 
+def fit_image_to_canvas(img: np.ndarray, target_w: int, target_h: int, *, bg=BG) -> np.ndarray:
+    """Resize `img` to fit within (target_w, target_h) preserving its
+    aspect ratio, centered on a canvas of exactly that size. Used so an
+    uploaded image sits in the same coordinate space as a live camera
+    frame — the framing gesture math doesn't need to know the source.
+    """
+    canvas = np.empty((target_h, target_w, 3), dtype=np.uint8)
+    canvas[:] = bg
+    ih, iw = img.shape[:2]
+    if ih == 0 or iw == 0:
+        return canvas
+    scale = min(target_w / iw, target_h / ih)
+    new_w = max(1, int(round(iw * scale)))
+    new_h = max(1, int(round(ih * scale)))
+    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+    resized = cv2.resize(img, (new_w, new_h), interpolation=interp)
+    x0 = (target_w - new_w) // 2
+    y0 = (target_h - new_h) // 2
+    canvas[y0:y0 + new_h, x0:x0 + new_w] = resized
+    return canvas
+
+
 def vignette(frame: np.ndarray, strength: float = 0.22) -> np.ndarray:
     """Cached radial vignette — cheap after first frame."""
     h, w = frame.shape[:2]

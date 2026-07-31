@@ -80,11 +80,17 @@ No keyboard shortcuts for the core loop — a **pinch *is* a click**, and releas
 ### 🧩 Puzzle Engine
 Choose between **3×3, 4×4, and 5×5** grids on the fly. Pieces snap into place automatically once they're nudged close enough to their slot.
 
+### 🎚️ Difficulty Tiers
+**Normal** mode is position-only. **Hard** mode (`D` to toggle) shuffles in a random 90° twist per piece — you'll need to rotate (`[` / `]`) *and* place each one correctly to solve it.
+
 ### 🎨 Live Visual Feedback
 Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebratory win animation** keep you oriented at every step. 🏆
 
 ### 🎧 Ambient Audio
 A looping music bed **crossfades** between Selection and Play modes, with punchy one-shot SFX for pinches, locks, snaps, shuffles, and the win moment. Press `M` to mute anytime. 🔊
+
+### 🖼️ Custom Image Uploads
+Don't want to puzzle your own face? Press `U` to pick any photo from disk — it drops into the same framing workflow as the camera, letterboxed so nothing stretches. Or skip the picker with `python main.py --image photo.jpg`. 📁
 
 </td>
 </tr>
@@ -161,6 +167,15 @@ python3 main.py
 python3 -m VisionPuzzle.app
 ```
 
+Prefer a still photo over the webcam? Skip straight to Play with:
+
+```bash
+python3 main.py --image path/to/photo.jpg
+```
+
+You can also pick a different camera with `--camera 1`, and switch
+image sources anytime in-app with the `U` key.
+
 🎬 Once launched, your webcam feed appears on screen with hand skeletons overlaid live and a HUD tucked into the top-left corner reporting status as you move.
 
 ---
@@ -202,12 +217,17 @@ This is where every session begins.
 |:---:|:---|:---|
 | `SPACE` / `ENTER` | Selection | Build the puzzle from your framed region |
 | `3` `4` `5` | Play | Switch grid density |
+| `D` | Selection | Toggle Normal / Hard difficulty |
+| `U` | Selection | Upload a custom image as the puzzle source |
 | `C` | Selection | Cancel the current frame |
 | `R` | Play | Shuffle every piece back to random spots |
+| `[` / `]` | Play | Rotate the held piece (Hard mode only) |
 | `N` | Anywhere | Return to Selection Mode for a new capture |
 | `H` | Anywhere | Show or hide the help overlay |
 | `M` | Anywhere | Mute or unmute audio |
-| `Q` / `Esc` | Anywhere | Exit the app |
+| `L` | Anywhere | Show or hide the best-times leaderboard |
+| `P` | Selection | Resume the last in-progress game, if one was saved |
+| `Q` / `Esc` | Anywhere | Exit the app — autosaves an in-progress puzzle |
 
 </div>
 
@@ -230,6 +250,8 @@ This is where every session begins.
     ├── 🎆 effects.py               ← animations and visual transitions
     ├── 🎨 overlay.py               ← everything drawn onto the frame
     ├── 🎧 audio.py                 ← AudioManager — ambient music + SFX
+    ├── 🏆 leaderboard.py           ← solve-time tracking, persisted per grid size
+    ├── 💾 savegame.py              ← save/resume an in-progress puzzle
     ├── 🧰 ui.py                    ← shared UI constants and helpers
     │
     ├── 📦 models/
@@ -239,6 +261,11 @@ This is where every session begins.
     ├── 🎵 assets/audio/
     │   ├── music/                  ← select.ogg, play.ogg (looping beds)
     │   └── sfx/                    ← pinch / lock / snap / shuffle / win
+    │
+    ├── 📊 data/
+    │   ├── leaderboard.json        ← auto-created; fastest solves per grid size
+    │   ├── savegame.json           ← auto-created; in-progress puzzle state
+    │   └── savegame_source.png     ← auto-created; the puzzle's source crop
     │
     └── 🗂️ snapshots/               ← cached puzzle captures
 ```
@@ -349,6 +376,15 @@ flowchart TD
 </details>
 
 <details>
+<summary>🖼️❌ <strong>"U" doesn't open a file picker</strong></summary>
+<br>
+
+- 🐍 The picker needs `tkinter`, which ships with most Python installs but not all Linux distros — try `sudo apt install python3-tk` (Debian/Ubuntu) or the equivalent for your distro.
+- 🖥️ No display available (e.g. over SSH)? Skip the picker entirely and launch with `python main.py --image photo.jpg` instead.
+- 📋 Check the terminal — a failed pick prints a one-line reason rather than silently doing nothing.
+</details>
+
+<details>
 <summary>📷❌ <strong>The camera won't open</strong></summary>
 <br>
 
@@ -408,15 +444,11 @@ Latency: 12ms
 
 | 🖼️ | 🎵 | 🏆 |
 |:---:|:---:|:---:|
-| Custom image uploads as puzzle sources | Ambient sound effects and background scoring | A leaderboard with solve-time tracking |
+| Face-blur privacy mode | Pinch calibration | Player profiles |
 
 | 🔄 | 🎭 | 💾 |
 |:---:|:---:|:---:|
-| Difficulty tiers that add piece rotation | Multiple visual themes for the puzzle board | Save-and-resume support for in-progress games |
-
-| 🌐 | 📈 | |
-|:---:|:---:|:---:|
-| Networked, multiplayer hand-tracking sessions | Built-in performance analytics | |
+| Timed challenge mode | Hint system | Real jigsaw-shaped pieces |
 
 </div>
 

@@ -15,6 +15,7 @@ Expected asset layout (relative to VisionPuzzle/assets/audio/):
     sfx/snap.wav         piece snapped into its slot
     sfx/shuffle.wav      board reshuffled
     sfx/win.wav          puzzle completed
+    sfx/rotate.wav       piece rotated (Hard mode)
 
 Any file you haven't recorded yet is simply skipped — nothing breaks.
 """
@@ -43,6 +44,7 @@ class AudioManager:
         "snap": "snap.wav",
         "shuffle": "shuffle.wav",
         "win": "win.wav",
+        "rotate": "rotate.wav",
     }
     MUSIC_FILES = {
         "select": "select.ogg",
