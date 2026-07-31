@@ -74,6 +74,9 @@ Both hands are tracked **independently, in real time**, with exponential smoothi
 ### 🤌 Gesture-Native Input
 No keyboard shortcuts for the core loop — a **pinch *is* a click**, and releasing *is* a drop. Two simultaneous pinches unlock two-piece manipulation. ⚡
 
+### 🖼️ Custom Image Uploads
+Don't want to puzzle your own face? Press `U` to pick any photo from disk — it drops into the same framing workflow as the camera, letterboxed so nothing stretches. Or skip the picker with `python main.py --image photo.jpg`. 📁
+
 </td>
 <td width="50%" valign="top">
 
@@ -88,9 +91,6 @@ Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebrato
 
 ### 🎧 Ambient Audio
 A looping music bed **crossfades** between Selection and Play modes, with punchy one-shot SFX for pinches, locks, snaps, shuffles, and the win moment. Press `M` to mute anytime. 🔊
-
-### 🖼️ Custom Image Uploads
-Don't want to puzzle your own face? Press `U` to pick any photo from disk — it drops into the same framing workflow as the camera, letterboxed so nothing stretches. Or skip the picker with `python main.py --image photo.jpg`. 📁
 
 </td>
 </tr>
