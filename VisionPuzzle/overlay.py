@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from VisionPuzzle.landmarks import CONNECTIONS, LANDMARK_COLOR
+from VisionPuzzle.leaderboard import AddResult, LeaderboardEntry, format_time
 from VisionPuzzle.tracker import HandResult
 from VisionPuzzle import ui
 
@@ -195,17 +196,68 @@ def draw_help(frame: np.ndarray, lines: list[str]) -> np.ndarray:
     return frame
 
 
-def draw_win(frame: np.ndarray, *, t: Optional[float] = None) -> np.ndarray:
+def draw_win(frame: np.ndarray, *, t: Optional[float] = None, result: Optional[AddResult] = None) -> np.ndarray:
     h, w = frame.shape[:2]
     now = t if t is not None else time.perf_counter()
     pulse = 0.5 + 0.5 * math.sin(now * 2.5)
     cx, cy = w // 2, h // 2
+    extra = 30 if result is not None else 0
     frame = ui.glass_panel(
-        frame, (cx - 220, cy - 55), (cx + 220, cy + 55),
+        frame, (cx - 220, cy - 55 - extra // 2), (cx + 220, cy + 55 + extra // 2),
         alpha=0.78, radius=18, accent_top=True,
     )
-    cv2.circle(frame, (cx, cy - 6), 54 + int(3 * pulse), ui.SUCCESS, 1, cv2.LINE_AA)
-    ui.put_text(frame, "COMPLETE", (cx - 95, cy + 6), scale=0.95, color=ui.SUCCESS, weight=2)
+    cv2.circle(frame, (cx, cy - 6 - extra // 2), 54 + int(3 * pulse), ui.SUCCESS, 1, cv2.LINE_AA)
+    ui.put_text(frame, "COMPLETE", (cx - 95, cy + 6 - extra // 2), scale=0.95, color=ui.SUCCESS, weight=2)
+
+    if result is not None:
+        sub = f"Time  {format_time(result.entry.time_seconds)}"
+        if result.is_new_best:
+            sub += "   ·   NEW BEST!"
+        elif result.made_board:
+            sub += f"   ·   #{result.rank} best"
+        (sub_w, _), _ = cv2.getTextSize(sub, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        badge_color = ui.SUCCESS if result.is_new_best else ui.TEXT_MUTED
+        ui.put_text(frame, sub, (cx - sub_w // 2, cy + 40), scale=0.5, color=badge_color, weight=1)
+
+    return frame
+
+
+def draw_leaderboard(
+    frame: np.ndarray,
+    entries: list[LeaderboardEntry],
+    label: str,
+    *,
+    highlight: Optional[LeaderboardEntry] = None,
+) -> np.ndarray:
+    """Compact top-times panel, anchored top-right below the HUD bar."""
+    h, w = frame.shape[:2]
+    rows = max(1, len(entries))
+    panel_h = 46 + rows * 24 + 10
+    x2 = w - 14
+    x1 = max(14, x2 - 220)
+    y1 = 62
+    y2 = y1 + panel_h
+    frame = ui.glass_panel(frame, (x1, y1), (x2, y2), alpha=0.68, radius=12, accent_top=True)
+    ui.put_text(frame, f"BEST · {label}", (x1 + 14, y1 + 24), scale=0.46, color=ui.ACCENT, weight=2)
+
+    if not entries:
+        ui.put_text(frame, "No times yet — go solve one!", (x1 + 14, y1 + 48), scale=0.42, color=ui.TEXT_MUTED)
+        return frame
+
+    for i, e in enumerate(entries):
+        y = y1 + 48 + i * 24
+        is_hl = highlight is not None and e is highlight
+        if i == 0:
+            color = ui.SUCCESS
+        elif is_hl:
+            color = ui.ACCENT_HOT
+        else:
+            color = ui.TEXT
+        ui.put_text(frame, f"{i + 1}.", (x1 + 14, y), scale=0.44, color=color)
+        ui.put_text(frame, format_time(e.time_seconds), (x1 + 42, y), scale=0.44, color=color)
+        if is_hl:
+            cv2.circle(frame, (x2 - 16, y - 5), 3, ui.ACCENT_HOT, -1, cv2.LINE_AA)
+
     return frame
 
 
