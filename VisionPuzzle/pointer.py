@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -22,6 +23,16 @@ class HandPointer:
     pinch_falling: bool
     score: float
     hand: HandResult
+    # Wrist -> middle-finger-base direction, in degrees. Stable enough to
+    # use as a "hand twist" signal for gesture-based piece rotation —
+    # unlike the thumb-index line, it doesn't wobble as the pinch itself
+    # opens and closes.
+    angle_deg: float = 0.0
+
+
+def angle_diff(a: float, b: float) -> float:
+    """Shortest signed difference a-b, wrapped to (-180, 180]."""
+    return (a - b + 180.0) % 360.0 - 180.0
 
 
 @dataclass
@@ -83,6 +94,10 @@ class DualPointerEngine:
             falling = (not pinching) and was
             self._pinch[key] = pinching
 
+            wrist = hand.landmarks[0]
+            palm = hand.landmarks[9]
+            angle = math.degrees(math.atan2(palm[1] - wrist[1], palm[0] - wrist[0]))
+
             pointers.append(
                 HandPointer(
                     handedness=hand.handedness,
@@ -93,6 +108,7 @@ class DualPointerEngine:
                     pinch_falling=falling,
                     score=hand.score,
                     hand=hand,
+                    angle_deg=angle,
                 )
             )
 

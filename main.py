@@ -16,7 +16,9 @@ Release both                   Lock selection
 SPACE / Enter                  Create jigsaw
 3 / 4 / 5                      Grid size
 D                              Toggle Normal / Hard (Hard adds rotation)
+2                              Toggle 1-player / 2-player (split board)
 U                              Upload a custom image as the puzzle source
+T                              Cycle color theme (dark/light/neon/mono)
 C                              Clear
 
 Play
@@ -24,15 +26,18 @@ Play
 Pinch a piece (either hand)    Grab
 Both hands at once             Move two pieces
 Release near slot              Snap
-[ / ]                          Rotate held piece (Hard mode)
+Twist your wrist               Rotate held piece (Hard mode)
+[ / ]                          Rotate held piece (keyboard fallback)
 R                              Reshuffle
 N                              New capture
 
 H                              Help
 M                              Mute / unmute audio
+T                              Cycle color theme
 L                              Show / hide leaderboard
 P                              Resume last save (Selection only)
-Q / Esc                        Quit
+Q / Esc                        Quit — a solved puzzle auto-saves a share
+                               card to VisionPuzzle/snapshots/
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧩✨ 3D Vision Puzzle ✨🧩
+# 🧩✨ 3D Vision Hand Puzzle ✨🧩
 
 ### 🖐️ *Turn your hands into the controller - no mouse, no touchscreen, just motion.* 🖐️
 
@@ -74,23 +74,32 @@ Both hands are tracked **independently, in real time**, with exponential smoothi
 ### 🤌 Gesture-Native Input
 No keyboard shortcuts for the core loop — a **pinch *is* a click**, and releasing *is* a drop. Two simultaneous pinches unlock two-piece manipulation. ⚡
 
-### 🖼️ Custom Image Uploads
-Don't want to puzzle your own face? Press `U` to pick any photo from disk — it drops into the same framing workflow as the camera, letterboxed so nothing stretches. Or skip the picker with `python main.py --image photo.jpg`. 📁
-
-</td>
-<td width="50%" valign="top">
-
 ### 🧩 Puzzle Engine
 Choose between **3×3, 4×4, and 5×5** grids on the fly. Pieces snap into place automatically once they're nudged close enough to their slot.
 
 ### 🎚️ Difficulty Tiers
-**Normal** mode is position-only. **Hard** mode (`D` to toggle) shuffles in a random 90° twist per piece — you'll need to rotate (`[` / `]`) *and* place each one correctly to solve it.
+**Normal** mode is position-only. **Hard** mode (`D` to toggle) shuffles in a random 90° twist per piece — twist your wrist to rotate it back (or use `[` / `]`), *and* place it correctly to solve.
 
 ### 🎨 Live Visual Feedback
 Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebratory win animation** keep you oriented at every step. 🏆
 
+</td>
+<td width="50%" valign="top">
+
 ### 🎧 Ambient Audio
-A looping music bed **crossfades** between Selection and Play modes, with punchy one-shot SFX for pinches, locks, snaps, shuffles, and the win moment. Press `M` to mute anytime. 🔊
+A looping music bed **crossfades** between Selection and Play modes, with punchy one-shot SFX for pinches, locks, snaps, shuffles, rotates, and the win moment. Press `M` to mute anytime. 🔊
+
+### 🖼️ Custom Image Uploads
+Don't want to puzzle your own face? Press `U` to pick any photo from disk — it drops into the same framing workflow as the camera, letterboxed so nothing stretches. Or skip the picker with `python main.py --image photo.jpg`. 📁
+
+### 🎭 Theme Switcher
+Press `T` to cycle **dark / light / neon / mono** palettes — the whole UI (board, HUD, cursors, particles) re-skins live, and your pick is remembered next launch.
+
+### 🧑‍🤝‍🧑 Two-Player Co-op
+Press `2` before you build the jigsaw to split the board — Left hand gets the left half's pieces, Right hand gets the right half's. Solve together, tracked on its own leaderboard.
+
+### 📸 Post-Win Share Card
+The moment you finish, a branded PNG — winning frame, solve time, grid, and rank — drops into `snapshots/`, ready to share.
 
 </td>
 </tr>
@@ -119,6 +128,7 @@ A looping music bed **crossfades** between Selection and Play modes, with punchy
 opencv-python >= 4.9.0    →  🎥 vision + image processing
 mediapipe     >= 0.10.9   →  🖐️ hand landmark inference
 numpy         >= 1.26.0   →  🔢 the math holding it all together
+Pygame       >= 2.5.0    →  🎨 rendering, audio, and the main loop
 ```
 
 ### 🪜 Installation, step by step
@@ -170,11 +180,10 @@ python3 -m VisionPuzzle.app
 Prefer a still photo over the webcam? Skip straight to Play with:
 
 ```bash
-python3 main.py --image path/to/photo.jpg
+python3 main.py --image /Users/md.abrarhossainzahin/Desktop/3D-Untouch-Puzzle copy/VisionPuzzle/assets/image/photo.png
 ```
 
-You can also pick a different camera with `--camera 1`, and switch
-image sources anytime in-app with the `U` key.
+You can also pick a different camera with `--camera 1`, and switch image sources anytime in-app with the `U` key.
 
 🎬 Once launched, your webcam feed appears on screen with hand skeletons overlaid live and a HUD tucked into the top-left corner reporting status as you move.
 
@@ -201,6 +210,7 @@ This is where every session begins.
 | Pinch with one hand | Picks up the nearest piece |
 | Move while pinched | Drags that piece across the board |
 | Pinch with both hands | Grabs and repositions two pieces at once |
+| Twist wrist while pinched | Rotates the held piece 90° per twist *(Hard mode)* |
 | Release near a slot | The piece **snaps** into place |
 | Release in open space | The piece scatters back into the shuffle |
 
@@ -208,6 +218,9 @@ This is where every session begins.
 
 > [!TIP]
 > The two-handed workflow really shines once the grid gets denser — coordinating both hands lets you clear corners and edges **in parallel** instead of one piece at a time. 🚀
+
+> [!NOTE]
+> Toggle `2` in Selection mode before building the jigsaw for **Two-Player Co-op**: pieces from the left half of the image go to your Left hand, the right half to your Right hand — pick up the other player's piece and nothing happens. Progress for both is tracked separately in the HUD, and the combined finish time goes to its own leaderboard.
 
 ### ⌨️ Keyboard Shortcuts
 
@@ -218,10 +231,13 @@ This is where every session begins.
 | `SPACE` / `ENTER` | Selection | Build the puzzle from your framed region |
 | `3` `4` `5` | Play | Switch grid density |
 | `D` | Selection | Toggle Normal / Hard difficulty |
+| `2` | Selection | Toggle 1-player / 2-player (splits the board) |
 | `U` | Selection | Upload a custom image as the puzzle source |
+| `T` | Anywhere | Cycle color theme (dark → light → neon → mono) |
 | `C` | Selection | Cancel the current frame |
 | `R` | Play | Shuffle every piece back to random spots |
-| `[` / `]` | Play | Rotate the held piece (Hard mode only) |
+| Twist wrist | Play | Rotate the held piece (Hard mode only) |
+| `[` / `]` | Play | Rotate the held piece — keyboard fallback |
 | `N` | Anywhere | Return to Selection Mode for a new capture |
 | `H` | Anywhere | Show or hide the help overlay |
 | `M` | Anywhere | Mute or unmute audio |
@@ -250,9 +266,10 @@ This is where every session begins.
     ├── 🎆 effects.py               ← animations and visual transitions
     ├── 🎨 overlay.py               ← everything drawn onto the frame
     ├── 🎧 audio.py                 ← AudioManager — ambient music + SFX
-    ├── 🏆 leaderboard.py           ← solve-time tracking, persisted per grid size
+    ├── 🏆 leaderboard.py           ← solve-time tracking, per board (grid × difficulty × players)
     ├── 💾 savegame.py              ← save/resume an in-progress puzzle
-    ├── 🧰 ui.py                    ← shared UI constants and helpers
+    ├── 📸 share.py                 ← post-win shareable PNG card
+    ├── 🧰 ui.py                    ← shared UI constants, theme system, helpers
     │
     ├── 📦 models/
     │   ├── hand_landmarker.task    ← MediaPipe's hand detection model
@@ -260,14 +277,15 @@ This is where every session begins.
     │
     ├── 🎵 assets/audio/
     │   ├── music/                  ← select.ogg, play.ogg (looping beds)
-    │   └── sfx/                    ← pinch / lock / snap / shuffle / win
+    │   └── sfx/                    ← pinch / lock / snap / shuffle / rotate / win
     │
     ├── 📊 data/
-    │   ├── leaderboard.json        ← auto-created; fastest solves per grid size
+    │   ├── leaderboard.json        ← auto-created; fastest solves per board
     │   ├── savegame.json           ← auto-created; in-progress puzzle state
-    │   └── savegame_source.png     ← auto-created; the puzzle's source crop
+    │   ├── savegame_source.png     ← auto-created; the puzzle's source crop
+    │   └── settings.json           ← auto-created; remembers your last theme
     │
-    └── 🗂️ snapshots/               ← cached puzzle captures
+    └── 🗂️ snapshots/               ← auto-created; post-win share cards land here
 ```
 
 ---

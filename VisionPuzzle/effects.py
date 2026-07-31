@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -30,7 +31,9 @@ class Effects:
     # x, y, radius, life, color
     fade: float = 0.0  # 0..1 white/dark overlay for transitions
 
-    def burst(self, x: float, y: float, *, color=ui.SUCCESS, n: int = 18) -> None:
+    def burst(self, x: float, y: float, *, color: Optional[tuple[int, int, int]] = None, n: int = 18) -> None:
+        if color is None:
+            color = ui.SUCCESS
         for _ in range(n):
             ang = random.random() * math.tau
             spd = 2.5 + random.random() * 5.5

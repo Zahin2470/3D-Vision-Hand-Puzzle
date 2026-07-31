@@ -57,6 +57,7 @@ class SaveGame:
                     "x": p.x, "y": p.y,
                     "placed": p.placed,
                     "rotation": p.rotation,
+                    "owner": p.owner,
                 }
                 for p in puzzle.pieces
             ]
@@ -68,6 +69,7 @@ class SaveGame:
                 "board_w": puzzle.board_w,
                 "board_h": puzzle.board_h,
                 "allow_rotation": puzzle.allow_rotation,
+                "two_player": puzzle.two_player,
                 "elapsed_seconds": round(max(0.0, elapsed_seconds), 2),
                 "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "pieces": pieces,
@@ -102,6 +104,7 @@ class SaveGame:
                 int(meta["board_x"]), int(meta["board_y"]),
                 int(meta["board_w"]), int(meta["board_h"]),
                 allow_rotation=bool(meta.get("allow_rotation", False)),
+                two_player=bool(meta.get("two_player", False)),
             )
             # from_image() shuffles by default — overwrite with the saved
             # positions so the board looks exactly like it did on save.

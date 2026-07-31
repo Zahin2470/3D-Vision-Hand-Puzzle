@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import time
 from enum import Enum, auto
 from pathlib import Path
@@ -16,6 +19,7 @@ from VisionPuzzle.effects import Effects
 from VisionPuzzle.jigsaw import JigsawPuzzle
 from VisionPuzzle.leaderboard import AddResult, Leaderboard
 from VisionPuzzle.savegame import SaveGame
+from VisionPuzzle.share import build_card, save_card
 from VisionPuzzle.overlay import (
     draw_dual_selection,
     draw_framing_link,
@@ -26,7 +30,7 @@ from VisionPuzzle.overlay import (
     draw_leaderboard,
     draw_win,
 )
-from VisionPuzzle.pointer import DualPointerEngine, DualPointerState
+from VisionPuzzle.pointer import DualPointerEngine, DualPointerState, angle_diff
 from VisionPuzzle.tracker import VisionPuzzleer
 
 
@@ -58,6 +62,13 @@ class VisionPuzzleApp:
         self._initial_image_path = Path(initial_image) if initial_image else None
         self._uploaded_image: Optional[np.ndarray] = None
         self._using_upload = False
+        self._twist_base: dict[str, float] = {}
+        self.TWIST_STEP_DEG = 42.0
+        self._settings_path = root / "data" / "settings.json"
+        self._load_settings()
+        self._snapshots_dir = root / "snapshots"
+        self._pending_share_frame = False
+        self._last_share_path: Optional[Path] = None
         self.show_help = False
         self._fps = 0.0
         self._frames = 0
@@ -66,6 +77,7 @@ class VisionPuzzleApp:
         self.mode = Mode.SELECT
         self.grid = 4
         self.difficulty = "normal"  # "normal" | "hard" (hard adds piece rotation)
+        self.players = 1  # 1 | 2 (2 splits the board: Left hand vs Right hand)
         self._corner_a: Optional[tuple[float, float]] = None
         self._corner_b: Optional[tuple[float, float]] = None
         self._smooth_a: Optional[tuple[float, float]] = None
@@ -146,6 +158,10 @@ class VisionPuzzleApp:
                 self.fx.update()
                 frame = self.fx.draw(frame)
 
+                if self._pending_share_frame:
+                    self._pending_share_frame = False
+                    self._build_and_save_share(frame)
+
                 self._tick_fps()
                 cv2.imshow(win, frame)
                 key = cv2.waitKey(1) & 0xFF
@@ -201,13 +217,51 @@ class VisionPuzzleApp:
         self._clear_selection()
         self.fx.flash_fade(0.35)
 
+    def _load_settings(self) -> None:
+        if not self._settings_path.is_file():
+            return
+        try:
+            data = json.loads(self._settings_path.read_text(encoding="utf-8"))
+            theme = data.get("theme")
+            if theme:
+                ui.set_theme(theme)
+        except Exception as exc:
+            print(f"[settings] could not read {self._settings_path}: {exc}")
+
+    def _save_settings(self) -> None:
+        try:
+            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
+            self._settings_path.write_text(
+                json.dumps({"theme": ui.get_theme_name()}), encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[settings] could not save {self._settings_path}: {exc}")
+
+    def _build_and_save_share(self, frame: np.ndarray) -> None:
+        if self.puzzle is None:
+            return
+        solve_time = self._last_result.entry.time_seconds if self._last_result else 0.0
+        card = build_card(
+            frame,
+            board_label=self._board_label(),
+            solve_time=solve_time,
+            result=self._last_result,
+        )
+        path = save_card(card, self._snapshots_dir)
+        if path is not None:
+            print(f"[share] saved {path}")
+            self._last_share_path = path
+
     def _board_key(self) -> str:
         """Leaderboard identifier for the current grid + difficulty —
         Hard-mode rotation makes solves slower, so it gets its own board."""
-        return f"{self.grid}h" if self.difficulty == "hard" else f"{self.grid}"
+        suffix = "h" if self.difficulty == "hard" else ""
+        suffix += "-2p" if self.players == 2 else ""
+        return f"{self.grid}{suffix}"
 
     def _board_label(self) -> str:
         suffix = " · HARD" if self.difficulty == "hard" else ""
+        suffix += " · 2P" if self.players == 2 else ""
         src = " · IMG" if self._using_upload else ""
         return f"{self.grid}\u00d7{self.grid}{suffix}{src}"
 
@@ -278,6 +332,7 @@ class VisionPuzzleApp:
             title="ZAHIN",
             extra=self._board_label(),
         )
+        ui.put_text(frame, ui.get_theme_name().upper(), (w - 84, 58), scale=0.38, color=ui.TEXT_MUTED)
         if self._has_save and not self._sel_locked:
             ui.put_text(
                 frame, "P  Resume last game", (16, h - 16),
@@ -294,8 +349,9 @@ class VisionPuzzleApp:
             frame = draw_help(frame, [
                 "Both hands pinch to frame",
                 "Release to lock · SPACE to create",
-                "3 / 4 / 5 grid · D difficulty · U upload",
-                "C clear · M mute · L leaderboard · Q quit",
+                "3 / 4 / 5 grid · D difficulty · 2 two-player",
+                "U upload · C clear · T theme",
+                "M mute · L leaderboard · Q quit",
             ])
         return frame
 
@@ -346,6 +402,7 @@ class VisionPuzzleApp:
         self.puzzle = JigsawPuzzle.from_image(
             crop, self.grid, self.grid, board_x, board_y, board_w, board_h,
             allow_rotation=(self.difficulty == "hard"),
+            two_player=(self.players == 2),
         )
         self._progress_disp = 0.0
         self._play_started = time.perf_counter()
@@ -364,6 +421,7 @@ class VisionPuzzleApp:
         self.puzzle = puzzle
         self.grid = puzzle.rows
         self.difficulty = "hard" if puzzle.allow_rotation else "normal"
+        self.players = 2 if puzzle.two_player else 1
         self._progress_disp = puzzle.placed_count / max(1, puzzle.total)
         self._play_started = time.perf_counter() - elapsed
         self._win_celebrated = False
@@ -397,9 +455,22 @@ class VisionPuzzleApp:
                 if hp.pinch_rising:
                     if self.puzzle.pick(key, px, py):
                         self.audio.play_sfx("pinch")
+                    self._twist_base[key] = hp.angle_deg
                 if hp.pinching:
                     self.puzzle.drag(key, px, py, w, h)
+                    if self.puzzle.allow_rotation and key in self.puzzle.held:
+                        base = self._twist_base.get(key)
+                        if base is None:
+                            self._twist_base[key] = hp.angle_deg
+                        else:
+                            delta = angle_diff(hp.angle_deg, base)
+                            if abs(delta) >= self.TWIST_STEP_DEG:
+                                step = 90 if delta > 0 else -90
+                                if self.puzzle.rotate_piece(key, step):
+                                    self.audio.play_sfx("rotate")
+                                self._twist_base[key] = hp.angle_deg
                 if hp.pinch_falling:
+                    self._twist_base.pop(key, None)
                     snapped, center = self.puzzle.drop(key)
                     if snapped and center is not None:
                         self.fx.burst(center[0], center[1], color=ui.SUCCESS, n=14)
@@ -425,6 +496,8 @@ class VisionPuzzleApp:
                 solve_time = now - (self._play_started or now)
                 self._last_result = self.leaderboard.add(self._board_key(), solve_time)
                 self.savegame.clear()
+                self._pending_share_frame = True
+                self._last_share_path = None
             frame = draw_win(frame, t=now, result=self._last_result)
 
         frame, self._progress_disp = draw_hud(
@@ -434,6 +507,15 @@ class VisionPuzzleApp:
             progress=progress,
             progress_display=self._progress_disp,
         )
+        ui.put_text(frame, ui.get_theme_name().upper(), (w - 84, 66), scale=0.38, color=ui.TEXT_MUTED)
+        if self.puzzle.two_player:
+            by_owner = self.puzzle.progress_by_owner()
+            lp, lt = by_owner.get("Left", (0, 0))
+            rp, rt = by_owner.get("Right", (0, 0))
+            ui.put_text(
+                frame, f"P1 (L)  {lp}/{lt}      P2 (R)  {rp}/{rt}",
+                (16, 70), scale=0.42, color=ui.TEXT_MUTED,
+            )
         if self.show_leaderboard:
             highlight = self._last_result.entry if self._last_result else None
             frame = draw_leaderboard(
@@ -446,8 +528,13 @@ class VisionPuzzleApp:
                 "M mute/unmute audio · L leaderboard",
             ]
             if self.puzzle is not None and self.puzzle.allow_rotation:
-                lines.insert(1, "[ / ] rotate held piece")
+                lines.insert(1, "Twist wrist to rotate · [ / ] also works")
             frame = draw_help(frame, lines)
+        if self.mode == Mode.WIN and self._last_share_path is not None:
+            ui.put_text(
+                frame, f"Saved  snapshots/{self._last_share_path.name}", (16, h - 16),
+                scale=0.4, color=ui.TEXT_MUTED,
+            )
         return frame
 
     # ---- keys -------------------------------------------------------------
@@ -462,6 +549,8 @@ class VisionPuzzleApp:
             self.grid = int(chr(key))
         if key in (ord("d"), ord("D")) and self.mode == Mode.SELECT:
             self.difficulty = "hard" if self.difficulty == "normal" else "normal"
+        if key == ord("2") and self.mode == Mode.SELECT:
+            self.players = 2 if self.players == 1 else 1
         if key in (ord("u"), ord("U")) and self.mode == Mode.SELECT:
             self._upload_image()
         if key in (ord("c"), ord("C")) and self.mode == Mode.SELECT:
@@ -481,6 +570,8 @@ class VisionPuzzleApp:
             self._play_started = time.perf_counter()
             self._win_celebrated = False
             self._last_result = None
+            self._pending_share_frame = False
+            self._last_share_path = None
             self.fx.flash_fade(0.3)
             self.audio.play_sfx("shuffle")
             self.mode = Mode.PLAY
@@ -491,6 +582,8 @@ class VisionPuzzleApp:
             self._play_started = None
             self._win_celebrated = False
             self._last_result = None
+            self._pending_share_frame = False
+            self._last_share_path = None
             self.savegame.clear()
             self._has_save = False
             self._uploaded_image = None
@@ -502,6 +595,10 @@ class VisionPuzzleApp:
             self.audio.toggle_mute()
         if key in (ord("l"), ord("L")):
             self.show_leaderboard = not self.show_leaderboard
+        if key in (ord("t"), ord("T")):
+            ui.set_theme(ui.next_theme_name())
+            self._save_settings()
+            self.fx.flash_fade(0.25)
         if key == ord("[") and self.mode == Mode.PLAY and self.puzzle is not None:
             if self.puzzle.rotate_held(-90):
                 self.audio.play_sfx("rotate")

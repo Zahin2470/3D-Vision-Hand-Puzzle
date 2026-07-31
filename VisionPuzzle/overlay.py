@@ -261,6 +261,6 @@ def draw_leaderboard(
     return frame
 
 
-def draw_status_chip(frame: np.ndarray, text: str, x: int, y: int, color=ui.ACCENT) -> None:
+def draw_status_chip(frame: np.ndarray, text: str, x: int, y: int, color=None) -> None:
     # Kept for API compat — unused in lean HUD
     pass

@@ -36,6 +36,9 @@ class Piece:
     rotation: int = 0
     _rot_cache_deg: int = field(default=-1, repr=False)
     _rot_cache_img: Optional[np.ndarray] = field(default=None, repr=False)
+    # Two-player mode: which hand is allowed to pick this piece up.
+    # None means "anyone" (the default, single-player behaviour).
+    owner: Optional[str] = None
 
 
 def _rotate_tile(image: np.ndarray, degrees: int, w: int, h: int) -> np.ndarray:
@@ -72,6 +75,7 @@ class JigsawPuzzle:
     completed: bool = False
     last_snap: bool = False
     allow_rotation: bool = False  # Hard mode: pieces shuffle in with a random 90° multiple
+    two_player: bool = False      # Split the board: left columns for Left hand, right for Right
 
     @classmethod
     def from_image(
@@ -85,6 +89,7 @@ class JigsawPuzzle:
         board_h: int,
         *,
         allow_rotation: bool = False,
+        two_player: bool = False,
     ) -> "JigsawPuzzle":
         ih, iw = image.shape[:2]
         interp = cv2.INTER_AREA if (board_w < iw or board_h < ih) else cv2.INTER_CUBIC
@@ -103,6 +108,7 @@ class JigsawPuzzle:
                 cv2.rectangle(tile, (0, 0), (tw - 1, th - 1), (30, 32, 36), 1)
                 cv2.line(tile, (1, 1), (tw - 2, 1), (255, 255, 255), 1)
                 cv2.line(tile, (1, 1), (1, th - 2), (255, 255, 255), 1)
+                owner = ("Left" if c < cols / 2 else "Right") if two_player else None
                 pieces.append(
                     Piece(
                         row=r,
@@ -114,6 +120,7 @@ class JigsawPuzzle:
                         target_y=float(board_y + r * th),
                         w=tw,
                         h=th,
+                        owner=owner,
                     )
                 )
 
@@ -128,6 +135,7 @@ class JigsawPuzzle:
             pieces=pieces,
             snap_px=max(24.0, min(tw, th) * 0.32),
             allow_rotation=allow_rotation,
+            two_player=two_player,
         )
         puzzle.shuffle()
         return puzzle
@@ -139,13 +147,21 @@ class JigsawPuzzle:
         margin = 24
         span_x = max(margin, self.board_x + self.board_w - margin)
         span_y = max(margin, self.board_y + self.board_h - margin)
+        mid_x = (margin + span_x) // 2
         for p in self.pieces:
             p.placed = False
             p.holder = None
             p.lift = 0.0
             p.rotation = random.choice((0, 90, 180, 270)) if self.allow_rotation else 0
+            if self.two_player and p.owner == "Left":
+                lo, hi = margin, max(margin, mid_x - p.w)
+            elif self.two_player and p.owner == "Right":
+                lo, hi = min(mid_x, span_x - p.w), max(mid_x, span_x - p.w)
+            else:
+                lo, hi = margin, max(margin, span_x - p.w)
+            hi = max(lo, hi)
             for _ in range(8):
-                p.x = float(random.randint(margin, max(margin, span_x - p.w)))
+                p.x = float(random.randint(int(lo), int(hi)))
                 p.y = float(random.randint(margin, max(margin, span_y - p.h)))
                 if abs(p.x - p.target_x) > self.snap_px or abs(p.y - p.target_y) > self.snap_px:
                     break
@@ -159,12 +175,25 @@ class JigsawPuzzle:
     def total(self) -> int:
         return len(self.pieces)
 
+    def progress_by_owner(self) -> dict[str, tuple[int, int]]:
+        """{'Left': (placed, total), 'Right': (placed, total)} — empty
+        outside two-player mode."""
+        if not self.two_player:
+            return {}
+        out: dict[str, tuple[int, int]] = {}
+        for owner in ("Left", "Right"):
+            owned = [p for p in self.pieces if p.owner == owner]
+            out[owner] = (sum(1 for p in owned if p.placed), len(owned))
+        return out
+
     def pick(self, hand_key: str, px: float, py: float) -> bool:
         if hand_key in self.held:
             return True
         for i in range(len(self.pieces) - 1, -1, -1):
             p = self.pieces[i]
             if p.placed or p.holder is not None:
+                continue
+            if self.two_player and p.owner is not None and p.owner != hand_key:
                 continue
             if p.draw_x <= px <= p.draw_x + p.w and p.draw_y <= py <= p.draw_y + p.h:
                 p.x, p.y = p.draw_x, p.draw_y
@@ -208,6 +237,18 @@ class JigsawPuzzle:
             self.pieces[idx].rotation = (self.pieces[idx].rotation + delta) % 360
             rotated = True
         return rotated
+
+    def rotate_piece(self, hand_key: str, delta: int) -> bool:
+        """Rotate only the piece held by one specific hand — used by the
+        twist gesture, where each hand's rotation should be independent
+        (e.g. two-player mode, or one hand dragging while the other twists)."""
+        if not self.allow_rotation:
+            return False
+        idx = self.held.get(hand_key)
+        if idx is None:
+            return False
+        self.pieces[idx].rotation = (self.pieces[idx].rotation + delta) % 360
+        return True
 
     def drop(self, hand_key: str) -> tuple[bool, Optional[tuple[float, float]]]:
         """Returns (snapped, snap_center_xy)."""
@@ -325,6 +366,10 @@ class JigsawPuzzle:
                 color, thick = ui.SUCCESS, 1
             elif p.holder:
                 color, thick = ui.ACCENT_HOT, 2
+            elif self.two_player and p.owner == "Left":
+                color, thick = (210, 160, 60), 1   # teal-ish — Left player's pieces
+            elif self.two_player and p.owner == "Right":
+                color, thick = (60, 160, 210), 1   # amber-ish — Right player's pieces
             else:
                 color, thick = (190, 194, 198), 1
             cv2.rectangle(out, (x, y), (x + p.w - 1, y + p.h - 1), color, thick, cv2.LINE_AA)
