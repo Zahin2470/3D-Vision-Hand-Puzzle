@@ -69,6 +69,8 @@ class VisionPuzzleApp:
         self._snapshots_dir = root / "snapshots"
         self._pending_share_frame = False
         self._last_share_path: Optional[Path] = None
+        self._fullscreen = False
+        self._win_name = "VisionPuzzle Studio"
         self.show_help = False
         self._fps = 0.0
         self._frames = 0
@@ -113,14 +115,19 @@ class VisionPuzzleApp:
             pass
 
         win = "VisionPuzzle Studio"
+        self._win_name = win
+        # WINDOW_NORMAL (not AUTOSIZE) is required for the fullscreen (F key)
+        # toggle to work reliably. We re-assert the window size below so it
+        # still starts locked to the camera's native resolution.
         cv2.namedWindow(win, cv2.WINDOW_NORMAL)
         ok, first = cap.read()
         if ok and first is not None:
-            cv2.resizeWindow(win, first.shape[1], first.shape[0])
             frame_w, frame_h = first.shape[1], first.shape[0]
+            cv2.resizeWindow(win, frame_w, frame_h)
         else:
-            cv2.resizeWindow(win, 1280, 720)
             frame_w, frame_h = 1280, 720
+            cv2.resizeWindow(win, frame_w, frame_h)
+        print(f"[display] camera frame size: {frame_w}x{frame_h}")
 
         if self._initial_image_path is not None:
             canvas = self._load_image_source(self._initial_image_path, frame_w, frame_h)
@@ -182,31 +189,103 @@ class VisionPuzzleApp:
             return None
         return ui.fit_image_to_canvas(img, target_w, target_h)
 
+    def _pick_file_macos(self) -> Optional[str]:
+        """Native Cocoa file dialog via AppleScript — no Tcl/Tk involved,
+        so it sidesteps the Tk-on-macOS crash entirely."""
+        script = 'POSIX path of (choose file with prompt "Choose a puzzle image")'
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            return result.stdout.strip() or None
+        except Exception as exc:
+            print(f"[upload] macOS file picker failed: {exc}")
+            return None
+
+    def _pick_file_windows(self) -> Optional[str]:
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$f = New-Object System.Windows.Forms.OpenFileDialog; "
+            "$f.Filter = 'Images|*.jpg;*.jpeg;*.png;*.bmp;*.webp'; "
+            "if ($f.ShowDialog() -eq 'OK') { Write-Output $f.FileName }"
+        )
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                capture_output=True, text=True, timeout=300,
+            )
+            return result.stdout.strip() or None
+        except Exception as exc:
+            print(f"[upload] Windows file picker failed: {exc}")
+            return None
+
+    def _pick_file_linux(self) -> Optional[str]:
+        for cmd in (
+            ["zenity", "--file-selection", "--title=Choose a puzzle image",
+             "--file-filter=Images | *.jpg *.jpeg *.png *.bmp *.webp"],
+            ["kdialog", "--getopenfilename", ".", "*.jpg *.jpeg *.png *.bmp *.webp"],
+        ):
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                path = result.stdout.strip()
+                if path:
+                    return path
+            except FileNotFoundError:
+                continue
+            except Exception as exc:
+                print(f"[upload] {cmd[0]} failed: {exc}")
+        return None
+
+    def _pick_file_tkinter_subprocess(self) -> Optional[str]:
+        """Last-resort fallback: run tkinter's file dialog in an isolated
+        child process. Some Python/Tcl-Tk builds on macOS crash the whole
+        interpreter when a Tk window is created — running it as a
+        subprocess means that crash can only take down the child, never
+        this app's camera loop."""
+        script = (
+            "import tkinter as tk\n"
+            "from tkinter import filedialog\n"
+            "root = tk.Tk()\n"
+            "root.withdraw()\n"
+            "path = filedialog.askopenfilename(\n"
+            "    title='Choose a puzzle image',\n"
+            "    filetypes=[('Images', '*.jpg *.jpeg *.png *.bmp *.webp'), ('All files', '*.*')],\n"
+            ")\n"
+            "print(path)\n"
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            if result.returncode != 0:
+                return None
+            return result.stdout.strip() or None
+        except Exception as exc:
+            print(f"[upload] file picker subprocess failed: {exc}")
+            return None
+
     def _upload_image(self) -> None:
         """Open a native file picker and swap the puzzle source to it.
-        Falls back to a console hint (use --image on the command line)
-        if tkinter isn't available in this environment."""
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-        except Exception as exc:
-            print(f"[upload] file dialog unavailable ({exc}); "
-                  "pass --image PATH on the command line instead.")
+        Tries a platform-native dialog first (no Tk dependency at all);
+        only falls back to a sandboxed tkinter subprocess if nothing
+        native is available."""
+        path: Optional[str] = None
+        if sys.platform == "darwin":
+            path = self._pick_file_macos()
+        elif sys.platform == "win32":
+            path = self._pick_file_windows()
+        elif sys.platform.startswith("linux"):
+            path = self._pick_file_linux()
+        if not path:
+            path = self._pick_file_tkinter_subprocess()
+        if not path:
+            print("[upload] no image chosen, or no file picker is available here. "
+                  "You can always launch with: python main.py --image PATH")
             return
 
-        picker = tk.Tk()
-        picker.withdraw()
-        try:
-            picker.attributes("-topmost", True)
-        except Exception:
-            pass
-        path = filedialog.askopenfilename(
-            title="Choose a puzzle image",
-            filetypes=[("Images", "*.jpg *.jpeg *.png *.bmp *.webp"), ("All files", "*.*")],
-        )
-        picker.destroy()
-
-        if not path or self._last_live is None:
+        if self._last_live is None:
             return
         h, w = self._last_live.shape[:2]
         canvas = self._load_image_source(path, w, h)
@@ -350,7 +429,7 @@ class VisionPuzzleApp:
                 "Both hands pinch to frame",
                 "Release to lock · SPACE to create",
                 "3 / 4 / 5 grid · D difficulty · 2 two-player",
-                "U upload · C clear · T theme",
+                "U upload · C clear · T theme · F fullscreen",
                 "M mute · L leaderboard · Q quit",
             ])
         return frame
@@ -599,6 +678,10 @@ class VisionPuzzleApp:
             ui.set_theme(ui.next_theme_name())
             self._save_settings()
             self.fx.flash_fade(0.25)
+        if key in (ord("f"), ord("F")):
+            self._fullscreen = not self._fullscreen
+            prop = cv2.WINDOW_FULLSCREEN if self._fullscreen else cv2.WINDOW_NORMAL
+            cv2.setWindowProperty(self._win_name, cv2.WND_PROP_FULLSCREEN, prop)
         if key == ord("[") and self.mode == Mode.PLAY and self.puzzle is not None:
             if self.puzzle.rotate_held(-90):
                 self.audio.play_sfx("rotate")

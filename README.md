@@ -83,6 +83,9 @@ Choose between **3×3, 4×4, and 5×5** grids on the fly. Pieces snap into place
 ### 🎨 Live Visual Feedback
 Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebratory win animation** keep you oriented at every step. 🏆
 
+### 📸 Post-Win Share Card
+The moment you finish, a branded PNG — winning frame, solve time, grid, and rank — drops into `snapshots/`, ready to share.
+
 </td>
 <td width="50%" valign="top">
 
@@ -98,8 +101,8 @@ Press `T` to cycle **dark / light / neon / mono** palettes — the whole UI (boa
 ### 🧑‍🤝‍🧑 Two-Player Co-op
 Press `2` before you build the jigsaw to split the board — Left hand gets the left half's pieces, Right hand gets the right half's. Solve together, tracked on its own leaderboard.
 
-### 📸 Post-Win Share Card
-The moment you finish, a branded PNG — winning frame, solve time, grid, and rank — drops into `snapshots/`, ready to share.
+### 🔤 Real Typography
+Every label, HUD element, and banner renders with an anti-aliased custom font (Poppins, via a cached PIL-backed renderer) instead of OpenCV's blocky built-in Hershey fonts — crisp text without the frame-rate hit, since repeated text is cached as a bitmap after the first draw.
 
 </td>
 </tr>
@@ -128,7 +131,8 @@ The moment you finish, a branded PNG — winning frame, solve time, grid, and ra
 opencv-python >= 4.9.0    →  🎥 vision + image processing
 mediapipe     >= 0.10.9   →  🖐️ hand landmark inference
 numpy         >= 1.26.0   →  🔢 the math holding it all together
-Pygame       >= 2.5.0    →  🎨 rendering, audio, and the main loop
+Pygame        >= 2.5.0    →  🎨 rendering, audio, and the main loop
+Pillow        >=10.0.0    →  🖼️ image loading, cropping, and saving
 ```
 
 ### 🪜 Installation, step by step
@@ -278,6 +282,9 @@ This is where every session begins.
     ├── 🎵 assets/audio/
     │   ├── music/                  ← select.ogg, play.ogg (looping beds)
     │   └── sfx/                    ← pinch / lock / snap / shuffle / rotate / win
+    │
+    ├── 🔤 assets/fonts/
+    │   └── Poppins-*.ttf            ← OFL-licensed, used for all on-screen text
     │
     ├── 📊 data/
     │   ├── leaderboard.json        ← auto-created; fastest solves per board

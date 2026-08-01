@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    _PIL_OK = True
+except Exception:  # Pillow missing — put_text() falls back to cv2's Hershey font
+    _PIL_OK = False
 
 
 # ── Design tokens (BGR) ─────────────────────────────────────────────────────
@@ -117,6 +124,99 @@ def smooth_toward(current: float, target: float, alpha: float = 0.35) -> float:
     return current * (1.0 - alpha) + target * alpha
 
 
+# ── Typography (Poppins via PIL, anti-aliased) ─────────────────────────────
+# cv2.putText only offers the old Hershey stroke fonts — blocky, no anti-
+# aliasing, reads as "programmer UI" rather than a polished product. We
+# render text with a real TTF (Poppins, OFL-licensed, bundled under
+# assets/fonts/) via Pillow instead, composited onto the same numpy frame.
+# Every existing `ui.put_text(...)` call site keeps working unchanged —
+# only what's drawn under the hood is nicer.
+
+_FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+_FONT_FILES = {
+    1: "Poppins-Medium.ttf",     # body / default weight
+    2: "Poppins-SemiBold.ttf",   # titles, emphasis
+    3: "Poppins-ExtraBold.ttf",  # big hero text (win banner, share card)
+}
+_FONT_CACHE: dict[tuple[int, int], "ImageFont.FreeTypeFont"] = {}
+_GLYPH_CACHE: dict[tuple, np.ndarray] = {}
+_SCALE_TO_PX = 31  # tuned so existing `scale=` call sites keep their old apparent size
+
+
+def _get_font(weight: int, px_size: int):
+    key = (weight, px_size)
+    font = _FONT_CACHE.get(key)
+    if font is not None:
+        return font
+    fname = _FONT_FILES.get(weight, _FONT_FILES[1])
+    try:
+        font = ImageFont.truetype(str(_FONT_DIR / fname), px_size)
+    except Exception:
+        font = ImageFont.load_default()
+    _FONT_CACHE[key] = font
+    return font
+
+
+def _render_glyph(text: str, font, color: tuple[int, int, int], shadow: bool) -> np.ndarray:
+    """Rasterize text to a small transparent RGBA patch, cached by
+    (text, font, color, shadow) — most on-screen text repeats identically
+    frame after frame (HUD title, static labels, help lines), so this
+    turns a slow PIL draw into a one-time cost. `id(font)` is a stable
+    cache key component because _get_font() never evicts loaded fonts."""
+    key = (text, id(font), color, shadow)
+    cached = _GLYPH_CACHE.get(key)
+    if cached is not None:
+        return cached
+    ascent, descent = font.getmetrics()
+    bbox = font.getbbox(text)
+    canvas_w = max(1, bbox[2]) + 4
+    canvas_h = ascent + descent + 4
+    patch = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(patch)
+    rgb = (color[2], color[1], color[0])
+    if shadow:
+        draw.text((3, 3), text, font=font, fill=(0, 0, 0, 255))
+    draw.text((2, 2), text, font=font, fill=(rgb[0], rgb[1], rgb[2], 255))
+    arr = np.array(patch)
+    if len(_GLYPH_CACHE) > 400:  # simple guard against unbounded growth
+        _GLYPH_CACHE.clear()
+    _GLYPH_CACHE[key] = arr
+    return arr
+
+
+def _blend_rgba(img: np.ndarray, patch: np.ndarray, x: int, y: int) -> None:
+    """Fast vectorized alpha-composite of a cached RGBA text patch onto
+    the frame — no PIL/color-space round trip on the hot path."""
+    h, w = img.shape[:2]
+    ph, pw = patch.shape[:2]
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(w, x + pw), min(h, y + ph)
+    if x1 <= x0 or y1 <= y0:
+        return
+    px0, py0 = x0 - x, y0 - y
+    px1, py1 = px0 + (x1 - x0), py0 + (y1 - y0)
+
+    region = img[y0:y1, x0:x1].astype(np.float32)
+    src = patch[py0:py1, px0:px1]
+    alpha = src[..., 3:4].astype(np.float32) / 255.0
+    rgb_bgr = src[..., (2, 1, 0)].astype(np.float32)
+    img[y0:y1, x0:x1] = (region * (1.0 - alpha) + rgb_bgr * alpha).astype(np.uint8)
+
+
+def _put_text_cv2_fallback(img, text, org, scale, color, weight, shadow) -> None:
+    """Original Hershey-font path — used only if Pillow or the bundled
+    fonts aren't available, so the app never crashes over typography."""
+    if shadow:
+        cv2.putText(
+            img, text, (org[0] + 1, org[1] + 1),
+            cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), weight + 1, cv2.LINE_AA,
+        )
+    cv2.putText(
+        img, text, org,
+        cv2.FONT_HERSHEY_SIMPLEX, scale, color, weight, cv2.LINE_AA,
+    )
+
+
 def put_text(
     img: np.ndarray,
     text: str,
@@ -128,16 +228,17 @@ def put_text(
     shadow: bool = True,
 ) -> None:
     if color is None:
-        color = TEXT  # resolved now, not baked in at function-definition time
-    if shadow:
-        cv2.putText(
-            img, text, (org[0] + 1, org[1] + 1),
-            cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), weight + 1, cv2.LINE_AA,
-        )
-    cv2.putText(
-        img, text, org,
-        cv2.FONT_HERSHEY_SIMPLEX, scale, color, weight, cv2.LINE_AA,
-    )
+        color = TEXT
+    if not _PIL_OK or not text:
+        _put_text_cv2_fallback(img, text, org, scale, color, weight, shadow)
+        return
+
+    px_size = max(10, int(round(scale * _SCALE_TO_PX)))
+    font = _get_font(weight, px_size)
+    ascent, _descent = font.getmetrics()
+    patch = _render_glyph(text, font, color, shadow)
+    x, y = org
+    _blend_rgba(img, patch, x - 2, y - ascent - 2)
 
 
 def rounded_rect(
