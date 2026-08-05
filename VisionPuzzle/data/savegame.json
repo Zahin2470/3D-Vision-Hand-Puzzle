@@ -1,0 +1,158 @@
+{
+  "rows": 4,
+  "cols": 4,
+  "board_x": 315,
+  "board_y": 113,
+  "board_w": 648,
+  "board_h": 516,
+  "allow_rotation": true,
+  "two_player": true,
+  "elapsed_seconds": 57.71,
+  "saved_at": "2026-08-05 23:22:19",
+  "pieces": [
+    {
+      "row": 0,
+      "col": 0,
+      "x": 56.0,
+      "y": 381.0,
+      "placed": false,
+      "rotation": 180,
+      "owner": "Left"
+    },
+    {
+      "row": 0,
+      "col": 1,
+      "x": 73.0,
+      "y": 188.0,
+      "placed": false,
+      "rotation": 0,
+      "owner": "Left"
+    },
+    {
+      "row": 0,
+      "col": 2,
+      "x": 564.0,
+      "y": 106.0,
+      "placed": false,
+      "rotation": 180,
+      "owner": "Right"
+    },
+    {
+      "row": 1,
+      "col": 0,
+      "x": 28.0,
+      "y": 138.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Left"
+    },
+    {
+      "row": 1,
+      "col": 1,
+      "x": 261.0,
+      "y": 334.0,
+      "placed": false,
+      "rotation": 90,
+      "owner": "Left"
+    },
+    {
+      "row": 1,
+      "col": 2,
+      "x": 733.0,
+      "y": 254.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Right"
+    },
+    {
+      "row": 1,
+      "col": 3,
+      "x": 670.0,
+      "y": 388.0,
+      "placed": false,
+      "rotation": 90,
+      "owner": "Right"
+    },
+    {
+      "row": 2,
+      "col": 0,
+      "x": 248.0,
+      "y": 176.0,
+      "placed": false,
+      "rotation": 0,
+      "owner": "Left"
+    },
+    {
+      "row": 2,
+      "col": 1,
+      "x": 282.0,
+      "y": 95.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Left"
+    },
+    {
+      "row": 2,
+      "col": 2,
+      "x": 620.0,
+      "y": 183.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Right"
+    },
+    {
+      "row": 3,
+      "col": 0,
+      "x": 252.0,
+      "y": 239.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Left"
+    },
+    {
+      "row": 3,
+      "col": 1,
+      "x": 110.0,
+      "y": 214.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Left"
+    },
+    {
+      "row": 3,
+      "col": 2,
+      "x": 527.0,
+      "y": 68.0,
+      "placed": false,
+      "rotation": 0,
+      "owner": "Right"
+    },
+    {
+      "row": 3,
+      "col": 3,
+      "x": 546.0,
+      "y": 43.0,
+      "placed": false,
+      "rotation": 270,
+      "owner": "Right"
+    },
+    {
+      "row": 2,
+      "col": 3,
+      "x": 423.75807339780465,
+      "y": 377.1515891813135,
+      "placed": false,
+      "rotation": 0,
+      "owner": "Right"
+    },
+    {
+      "row": 0,
+      "col": 3,
+      "x": 801.0,
+      "y": 113.0,
+      "placed": true,
+      "rotation": 0,
+      "owner": "Right"
+    }
+  ]
+}
