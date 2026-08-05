@@ -39,6 +39,19 @@ class Piece:
     # Two-player mode: which hand is allowed to pick this piece up.
     # None means "anyone" (the default, single-player behaviour).
     owner: Optional[str] = None
+    # Shatter-entrance animation: where this piece flies FROM (its solved
+    # slot) and TO (its shuffled resting spot), plus a small per-piece
+    # delay so pieces don't all launch in perfect unison.
+    _shatter_from: tuple[float, float] = field(default=(0.0, 0.0), repr=False)
+    _shatter_to: tuple[float, float] = field(default=(0.0, 0.0), repr=False)
+    _shatter_delay: float = field(default=0.0, repr=False)
+
+
+def _ease_out_back(t: float, overshoot: float = 1.7) -> float:
+    """0..1 in, overshoots past 1.0 then settles back — a punchy, springy
+    landing feel without needing real spring/velocity simulation."""
+    t = max(0.0, min(1.0, t)) - 1.0
+    return t * t * ((overshoot + 1.0) * t + overshoot) + 1.0
 
 
 def _rotate_tile(image: np.ndarray, degrees: int, w: int, h: int) -> np.ndarray:
@@ -76,6 +89,9 @@ class JigsawPuzzle:
     last_snap: bool = False
     allow_rotation: bool = False  # Hard mode: pieces shuffle in with a random 90° multiple
     two_player: bool = False      # Split the board: left columns for Left hand, right for Right
+    shattering: bool = False
+    _shatter_t0: float = field(default=0.0, repr=False)
+    _shatter_duration: float = field(default=0.55, repr=False)
 
     @classmethod
     def from_image(
@@ -167,6 +183,47 @@ class JigsawPuzzle:
                     break
             p.draw_x, p.draw_y = p.x, p.y
 
+    def start_shatter(self, now: float, *, duration: float = 0.55, max_stagger: float = 0.18) -> None:
+        """Kick off the 'shatter' entrance: every piece starts at its
+        SOLVED position (so the picture looks whole for an instant) and
+        flies out to the resting spot `shuffle()` already picked for it,
+        each with a small random delay so they don't launch in lockstep.
+        Call `shuffle()` first — this reads the positions it left behind
+        as the flight destinations, then re-parks pieces at target."""
+        self.shattering = True
+        self._shatter_t0 = now
+        self._shatter_duration = max(0.05, duration)
+        for p in self.pieces:
+            p._shatter_from = (p.target_x, p.target_y)
+            p._shatter_to = (p.x, p.y)
+            p._shatter_delay = random.uniform(0.0, max_stagger)
+            p.x, p.y = p.target_x, p.target_y
+            p.draw_x, p.draw_y = p.x, p.y
+
+    def tick_shatter(self, now: float) -> bool:
+        """Advance the shatter animation by one frame. Returns True while
+        still animating (interaction should stay disabled meanwhile)."""
+        if not self.shattering:
+            return False
+        elapsed = now - self._shatter_t0
+        still_running = False
+        for p in self.pieces:
+            local_t = (elapsed - p._shatter_delay) / self._shatter_duration
+            if local_t < 1.0:
+                still_running = True
+            eased = _ease_out_back(local_t)
+            fx, fy = p._shatter_from
+            tx, ty = p._shatter_to
+            p.x = fx + (tx - fx) * eased
+            p.y = fy + (ty - fy) * eased
+            p.draw_x, p.draw_y = p.x, p.y
+        if not still_running:
+            self.shattering = False
+            for p in self.pieces:
+                p.x, p.y = p._shatter_to
+                p.draw_x, p.draw_y = p.x, p.y
+        return self.shattering
+
     @property
     def placed_count(self) -> int:
         return sum(1 for p in self.pieces if p.placed)
@@ -187,6 +244,8 @@ class JigsawPuzzle:
         return out
 
     def pick(self, hand_key: str, px: float, py: float) -> bool:
+        if self.shattering:
+            return False
         if hand_key in self.held:
             return True
         for i in range(len(self.pieces) - 1, -1, -1):

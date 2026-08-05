@@ -158,19 +158,37 @@ def draw_hud(
     step: int = 1,
     timer: str = "",
 ) -> tuple[np.ndarray, Optional[float]]:
-    """Minimal top bar — brand + thin progress only."""
+    """Floating rounded HUD pill, sized to its content — not a full-width
+    bar. Reads more like a modern game/OS widget than a status strip."""
     h, w = frame.shape[:2]
-    top = 44 if progress is None else 52
-    frame = ui.glass_panel(frame, (0, 0), (w, top), alpha=0.55, radius=0, border=False, accent_top=True)
+    margin = 14
+    body_h = 42 if progress is None else 50
 
-    cv2.circle(frame, (22, 22), 5, ui.ACCENT, -1, cv2.LINE_AA)
-    ui.put_text(frame, title, (36, 28), scale=0.62, color=ui.ACCENT, weight=2)
+    title_w, _ = ui.text_size(title, scale=0.62, weight=2)
+    extra = extra[:28]
+    extra_w = ui.text_size(extra, scale=0.46, weight=1)[0] if extra else 0
+    content_w = 44 + title_w + (28 + extra_w if extra else 0) + 20
+    panel_w = int(min(w - margin * 2, max(190, content_w)))
+
+    x1, y1 = margin, margin
+    x2, y2 = x1 + panel_w, y1 + body_h
+
+    frame = ui.glass_panel(
+        frame, (x1, y1), (x2, y2),
+        alpha=0.62, radius=18, border=True, gradient=True, shadow=True,
+    )
+
+    cy = y1 + (24 if progress is None else 26)
+    dot = (x1 + 20, cy - 6)
+    ui.glow_dot(frame, dot, 11, ui.ACCENT, intensity=0.28)
+    cv2.circle(frame, dot, 5, ui.ACCENT, -1, cv2.LINE_AA)
+    ui.put_text(frame, title, (x1 + 34, cy), scale=0.62, color=ui.ACCENT, weight=2)
     if extra:
-        ui.put_text(frame, extra[:24], (w - 120, 28), scale=0.48, color=ui.TEXT_MUTED, shadow=False)
+        ui.put_text(frame, extra, (x2 - extra_w - 18, cy - 1), scale=0.46, color=ui.TEXT_MUTED, shadow=False)
 
     disp = progress_display
     if progress is not None:
-        disp = ui.progress_bar(frame, 36, 38, w - 72, 5, progress, display=disp)
+        disp = ui.progress_bar(frame, x1 + 18, y2 - 13, panel_w - 36, 4, progress, display=disp)
     return frame, disp
 
 
@@ -185,12 +203,16 @@ def draw_framing_link(frame: np.ndarray, dual, w: int, h: int) -> np.ndarray:
     return frame
 
 
-def draw_help(frame: np.ndarray, lines: list[str]) -> np.ndarray:
+def draw_help(frame: np.ndarray, lines: list[str], *, enter_t: float = 1.0) -> np.ndarray:
     h, w = frame.shape[:2]
     panel_h = 22 * len(lines) + 20
-    x1, y1 = 14, h - panel_h - 14
+    eased = ui.ease_out_cubic(enter_t)
+    slide = int((1.0 - eased) * 24)  # starts pushed down, slides up into place
+    x1, y1 = 14, h - panel_h - 14 + slide
     x2 = min(w - 14, 400)
-    frame = ui.glass_panel(frame, (x1, y1), (x2, h - 14), alpha=0.6, radius=12, accent_top=True)
+    frame = ui.glass_panel(
+        frame, (x1, y1), (x2, h - 14 + slide), alpha=0.6 * eased, radius=12, accent_top=True, gradient=True,
+    )
     for i, line in enumerate(lines):
         ui.put_text(frame, line, (x1 + 14, y1 + 28 + i * 22), scale=0.44, color=ui.TEXT)
     return frame
@@ -204,9 +226,11 @@ def draw_win(frame: np.ndarray, *, t: Optional[float] = None, result: Optional[A
     extra = 30 if result is not None else 0
     frame = ui.glass_panel(
         frame, (cx - 220, cy - 55 - extra // 2), (cx + 220, cy + 55 + extra // 2),
-        alpha=0.78, radius=18, accent_top=True,
+        alpha=0.78, radius=18, accent_top=True, gradient=True, shadow=True,
     )
-    cv2.circle(frame, (cx, cy - 6 - extra // 2), 54 + int(3 * pulse), ui.SUCCESS, 1, cv2.LINE_AA)
+    ring_r = 54 + int(3 * pulse)
+    ui.glow_dot(frame, (cx, cy - 6 - extra // 2), ring_r + 16, ui.SUCCESS, intensity=0.22)
+    cv2.circle(frame, (cx, cy - 6 - extra // 2), ring_r, ui.SUCCESS, 1, cv2.LINE_AA)
     ui.put_text(frame, "COMPLETE", (cx - 95, cy + 6 - extra // 2), scale=0.95, color=ui.SUCCESS, weight=2)
 
     if result is not None:
@@ -215,7 +239,7 @@ def draw_win(frame: np.ndarray, *, t: Optional[float] = None, result: Optional[A
             sub += "   ·   NEW BEST!"
         elif result.made_board:
             sub += f"   ·   #{result.rank} best"
-        (sub_w, _), _ = cv2.getTextSize(sub, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        sub_w, _ = ui.text_size(sub, scale=0.5, weight=1)
         badge_color = ui.SUCCESS if result.is_new_best else ui.TEXT_MUTED
         ui.put_text(frame, sub, (cx - sub_w // 2, cy + 40), scale=0.5, color=badge_color, weight=1)
 
@@ -228,16 +252,21 @@ def draw_leaderboard(
     label: str,
     *,
     highlight: Optional[LeaderboardEntry] = None,
+    enter_t: float = 1.0,
 ) -> np.ndarray:
     """Compact top-times panel, anchored top-right below the HUD bar."""
     h, w = frame.shape[:2]
     rows = max(1, len(entries))
     panel_h = 46 + rows * 24 + 10
+    eased = ui.ease_out_cubic(enter_t)
+    slide = int((1.0 - eased) * -20)  # starts higher, drops into place
     x2 = w - 14
     x1 = max(14, x2 - 220)
-    y1 = 62
+    y1 = 66 + slide
     y2 = y1 + panel_h
-    frame = ui.glass_panel(frame, (x1, y1), (x2, y2), alpha=0.68, radius=12, accent_top=True)
+    frame = ui.glass_panel(
+        frame, (x1, y1), (x2, y2), alpha=0.68 * eased, radius=12, accent_top=True, gradient=True,
+    )
     ui.put_text(frame, f"BEST · {label}", (x1 + 14, y1 + 24), scale=0.46, color=ui.ACCENT, weight=2)
 
     if not entries:

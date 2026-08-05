@@ -83,8 +83,8 @@ Choose between **3×3, 4×4, and 5×5** grids on the fly. Pieces snap into place
 ### 🎨 Live Visual Feedback
 Skeleton overlays, gesture cursors, a selection-frame preview, and a **celebratory win animation** keep you oriented at every step. 🏆
 
-### 📸 Post-Win Share Card
-The moment you finish, a branded PNG — winning frame, solve time, grid, and rank — drops into `snapshots/`, ready to share.
+### 💥 Shatter Entrance
+Building the jigsaw (or hitting `R` to reshuffle) doesn't just dump the pieces onscreen — the assembled picture holds for an instant, then every piece flies out to its scattered spot with a springy overshoot-settle motion, each on a slightly staggered delay. HUD counters count up instead of jumping, and panels (leaderboard, help) slide and fade into place instead of popping in.
 
 </td>
 <td width="50%" valign="top">
@@ -103,6 +103,9 @@ Press `2` before you build the jigsaw to split the board — Left hand gets the 
 
 ### 🔤 Real Typography
 Every label, HUD element, and banner renders with an anti-aliased custom font (Poppins, via a cached PIL-backed renderer) instead of OpenCV's blocky built-in Hershey fonts — crisp text without the frame-rate hit, since repeated text is cached as a bitmap after the first draw.
+
+### 📸 Post-Win Share Card
+The moment you finish, a branded PNG — winning frame, solve time, grid, and rank — drops into `snapshots/`, ready to share.
 
 </td>
 </tr>

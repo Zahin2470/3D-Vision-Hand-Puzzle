@@ -70,7 +70,7 @@ def build_card(
             ui.put_text(card, tag, (24, fy + 96), scale=0.48, color=ui.ACCENT_HOT)
 
     stamp = time.strftime("%Y-%m-%d %H:%M")
-    (stamp_w, _), _ = cv2.getTextSize(stamp, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
+    stamp_w, _ = ui.text_size(stamp, scale=0.42, weight=1)
     ui.put_text(card, stamp, (card_width - stamp_w - 20, fy + footer_h - 14), scale=0.42, color=ui.TEXT_MUTED)
 
     return card

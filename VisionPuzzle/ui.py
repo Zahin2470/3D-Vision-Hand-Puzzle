@@ -124,6 +124,13 @@ def smooth_toward(current: float, target: float, alpha: float = 0.35) -> float:
     return current * (1.0 - alpha) + target * alpha
 
 
+def ease_out_cubic(t: float) -> float:
+    """Gentle, no-overshoot easing — good for panels/HUD entrances where
+    a bouncy spring would feel too playful for a persistent widget."""
+    t = max(0.0, min(1.0, t))
+    return 1.0 - (1.0 - t) ** 3
+
+
 # ── Typography (Poppins via PIL, anti-aliased) ─────────────────────────────
 # cv2.putText only offers the old Hershey stroke fonts — blocky, no anti-
 # aliasing, reads as "programmer UI" rather than a polished product. We
@@ -217,6 +224,20 @@ def _put_text_cv2_fallback(img, text, org, scale, color, weight, shadow) -> None
     )
 
 
+def text_size(text: str, *, scale: float = 0.55, weight: int = 1) -> tuple[int, int]:
+    """Measure rendered (width, height) for a string at the given scale —
+    used to size panels/pills to their actual text content. Uses the
+    same font resolution as put_text() so measurements stay accurate."""
+    if not _PIL_OK or not text:
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, weight)
+        return tw, th
+    px_size = max(10, int(round(scale * _SCALE_TO_PX)))
+    font = _get_font(weight, px_size)
+    bbox = font.getbbox(text)
+    ascent, descent = font.getmetrics()
+    return bbox[2], ascent + descent
+
+
 def put_text(
     img: np.ndarray,
     text: str,
@@ -273,6 +294,70 @@ def rounded_rect(
         cv2.ellipse(img, (x2 - r, y2 - r), (r, r), 0, 0, 90, color, thickness, cv2.LINE_AA)
 
 
+def _lighten(color: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    return tuple(int(c + (255 - c) * amount) for c in color)  # type: ignore[return-value]
+
+
+def _vertical_gradient(h: int, w: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> np.ndarray:
+    t = np.linspace(0.0, 1.0, max(1, h), dtype=np.float32).reshape(-1, 1, 1)
+    top_a = np.array(top, dtype=np.float32).reshape(1, 1, 3)
+    bot_a = np.array(bottom, dtype=np.float32).reshape(1, 1, 3)
+    grad = top_a * (1.0 - t) + bot_a * t
+    return np.broadcast_to(grad, (max(1, h), max(1, w), 3)).astype(np.uint8)
+
+
+def drop_shadow(
+    frame: np.ndarray,
+    pt1: tuple[int, int],
+    pt2: tuple[int, int],
+    *,
+    radius: int = 14,
+    offset: int = 5,
+    alpha: float = 0.30,
+) -> None:
+    """Cheap soft-ish shadow: a few progressively larger, fainter rounded
+    rects offset down-right. No gaussian blur needed to read as "lifted"
+    off the background — a handful of layers is enough at UI sizes."""
+    x1, y1 = pt1
+    x2, y2 = pt2
+    h, w = frame.shape[:2]
+    for i, (spread, a) in enumerate(((0, alpha), (2, alpha * 0.55), (4, alpha * 0.3))):
+        sx1, sy1 = max(0, x1 - spread + offset), max(0, y1 - spread + offset)
+        sx2, sy2 = min(w, x2 + spread + offset), min(h, y2 + spread + offset)
+        if sx2 <= sx1 or sy2 <= sy1:
+            continue
+        roi = frame[sy1:sy2, sx1:sx2]
+        dark = np.zeros_like(roi)
+        cv2.addWeighted(dark, a, roi, 1.0 - a, 0, dst=roi)
+
+
+def glow_dot(
+    frame: np.ndarray,
+    center: tuple[int, int],
+    radius: int,
+    color: tuple[int, int, int],
+    *,
+    intensity: float = 0.35,
+    layers: int = 4,
+) -> None:
+    """Soft radial glow via a few concentric semi-transparent circles —
+    cheaper than a real gaussian bloom pass and reads well at UI scale."""
+    cx, cy = center
+    h, w = frame.shape[:2]
+    x0, y0 = max(0, cx - radius), max(0, cy - radius)
+    x1, y1 = min(w, cx + radius), min(h, cy + radius)
+    if x1 <= x0 or y1 <= y0:
+        return
+    roi = frame[y0:y1, x0:x1]
+    glow = roi.copy()
+    for i in range(layers, 0, -1):
+        r = int(radius * i / layers)
+        a = intensity * (1.0 - i / (layers + 1))
+        cv2.circle(glow, (cx - x0, cy - y0), r, color, -1, cv2.LINE_AA)
+        cv2.addWeighted(glow, a, roi, 1.0 - a, 0, dst=roi)
+        glow[:] = roi
+
+
 def glass_panel(
     frame: np.ndarray,
     pt1: tuple[int, int],
@@ -282,6 +367,8 @@ def glass_panel(
     radius: int = 14,
     border: bool = True,
     accent_top: bool = False,
+    gradient: bool = False,
+    shadow: bool = False,
 ) -> np.ndarray:
     x1, y1 = pt1
     x2, y2 = pt2
@@ -291,10 +378,15 @@ def glass_panel(
     if x2 <= x1 or y2 <= y1:
         return frame
 
+    if shadow:
+        drop_shadow(frame, (x1, y1), (x2, y2), radius=radius)
+
     roi = frame[y1:y2, x1:x2]
-    # Fast darken without full-frame copy
-    dark = np.empty_like(roi)
-    dark[:] = BG_ELEVATED
+    if gradient:
+        dark = _vertical_gradient(y2 - y1, x2 - x1, _lighten(BG_ELEVATED, 0.10), BG_ELEVATED)
+    else:
+        dark = np.empty_like(roi)
+        dark[:] = BG_ELEVATED
     cv2.addWeighted(dark, alpha, roi, 1.0 - alpha, 0, dst=roi)
 
     if accent_top and y2 - y1 > 8:
@@ -384,7 +476,7 @@ def chip(
     if color is None:
         color = ACCENT
     pad_x, pad_y = 14, 8
-    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
+    tw, th = text_size(text, scale=0.48, weight=1)
     w, h = tw + pad_x * 2, th + pad_y * 2
     if filled:
         rounded_rect(frame, (x, y), (x + w, y + h), color, radius=h // 2)
