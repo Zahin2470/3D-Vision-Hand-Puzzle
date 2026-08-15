@@ -9,10 +9,23 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from VisionPuzzle.landmarks import CONNECTIONS, LANDMARK_COLOR
+from VisionPuzzle.landmarks import (
+    CONNECTIONS,
+    DEPTH,
+    PALM_TRIANGLES,
+    TIP_PAIRINGS,
+    TIPS,
+    WEB_BRIDGES,
+)
 from VisionPuzzle.leaderboard import AddResult, LeaderboardEntry, format_time
 from VisionPuzzle.tracker import HandResult
 from VisionPuzzle import ui
+
+# Map MediaPipe landmark indices to finger IDs (0: Thumb, 1: Index, 2: Middle, 3: Ring, 4: Pinky)
+LANDMARK_FINGER_MAP: dict[int, int] = {}
+for _f_idx, _group in enumerate([(1, 2, 3, 4), (5, 6, 7, 8), (9, 10, 11, 12), (13, 14, 15, 16), (17, 18, 19, 20)]):
+    for _lm_idx in _group:
+        LANDMARK_FINGER_MAP[_lm_idx] = _f_idx
 
 
 def _dotted_line(
@@ -41,10 +54,62 @@ def _dotted_line(
         cv2.line(img, a, b, color, thickness, cv2.LINE_AA)
 
 
-def draw_hands(frame: np.ndarray, hands: list[HandResult], *, light: bool = False) -> np.ndarray:
-    """Skeleton overlay. `light` uses solid lines (faster) for play mode."""
+def _lerp_color(c0, c1, t: float):
+    t = max(0.0, min(1.0, t))
+    return (int(c0[0] + (c1[0]-c0[0])*t), int(c0[1] + (c1[1]-c0[1])*t), int(c0[2] + (c1[2]-c0[2])*t))
+
+
+def _draw_web_arc(
+    img: np.ndarray,
+    p0: tuple[int, int],
+    p1: tuple[int, int],
+    center: tuple[int, int],
+    color: tuple[int, int, int],
+    *,
+    thickness: int = 1,
+    sag: float = 0.35,
+) -> None:
+    mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
+    cx = int(mx + (center[0] - mx) * sag)
+    cy = int(my + (center[1] - my) * sag)
+
+    pts = np.array([p0, (cx, cy), p1], dtype=np.int32)
+    t = np.linspace(0, 1, 12)[:, None]
+    curve = (1 - t) ** 2 * pts[0] + 2 * (1 - t) * t * pts[1] + t**2 * pts[2]
+    cv2.polylines(img, [curve.astype(np.int32)], False, color, thickness, cv2.LINE_AA)
+
+
+def draw_hands(
+    frame: np.ndarray,
+    hands: list[HandResult],
+    *,
+    light: bool = False,
+    t: Optional[float] = None,
+) -> np.ndarray:
+    """Cyber HUD Overlay: Holographic triangulation mesh, outer tip shield,
+
+    and spinning reticles on index tip. Re-colors live on theme switch (T key).
+    """
     h, w = frame.shape[:2]
-    tip_r = 4 if light else 6
+    now = t if t is not None else time.perf_counter()
+    base, hot = ui.ACCENT, ui.ACCENT_HOT  # Read theme live
+
+    # Theme-shifted per-finger gradients
+    base_hsv = cv2.cvtColor(np.uint8([[[*base]]]), cv2.COLOR_BGR2HSV)[0][0]
+    hot_hsv = cv2.cvtColor(np.uint8([[[*hot]]]), cv2.COLOR_BGR2HSV)[0][0]
+
+    finger_theme_colors: dict[int, tuple[tuple[int, int, int], tuple[int, int, int]]] = {}
+    for f_idx in range(5):
+        hue_shift = f_idx * 14.0
+        b_h = int((float(base_hsv[0]) + hue_shift) % 180)
+        h_h = int((float(hot_hsv[0]) + hue_shift) % 180)
+
+        c0 = cv2.cvtColor(np.uint8([[[b_h, base_hsv[1], base_hsv[2]]]]), cv2.COLOR_HSV2BGR)[0][0]
+        c1 = cv2.cvtColor(np.uint8([[[h_h, hot_hsv[1], hot_hsv[2]]]]), cv2.COLOR_HSV2BGR)[0][0]
+        finger_theme_colors[f_idx] = (
+            (int(c0[0]), int(c0[1]), int(c0[2])),
+            (int(c1[0]), int(c1[1]), int(c1[2])),
+        )
 
     for hand in hands:
         pts: list[tuple[int, int]] = []
@@ -53,19 +118,117 @@ def draw_hands(frame: np.ndarray, hands: list[HandResult], *, light: bool = Fals
             y = int(np.clip(lm[1], 0.0, 1.0) * (h - 1))
             pts.append((x, y))
 
-        for a, b, color in CONNECTIONS:
-            if light:
-                cv2.line(frame, pts[a], pts[b], color, 2, cv2.LINE_AA)
+        if len(pts) < 21:
+            continue
+
+        palm_pts = [pts[i] for i in (0, 1, 5, 9, 13, 17)]
+        palm_center = (
+            int(sum(p[0] for p in palm_pts) / len(palm_pts)),
+            int(sum(p[1] for p in palm_pts) / len(palm_pts)),
+        )
+
+        # 1. Holographic Palm Triangulation Mesh
+        if not light:
+            for tri in PALM_TRIANGLES:
+                tri_pts = np.array([pts[i] for i in tri], dtype=np.int32)
+
+                # Facet wireframe
+                cv2.polylines(frame, [tri_pts], True, base, 1, cv2.LINE_AA)
+
+                # Translucent facet fill
+                x_tmin, y_tmin = max(0, int(np.min(tri_pts[:, 0]))), max(0, int(np.min(tri_pts[:, 1])))
+                x_tmax, y_tmax = min(w, int(np.max(tri_pts[:, 0])) + 1), min(h, int(np.max(tri_pts[:, 1])) + 1)
+                if x_tmax > x_tmin and y_tmax > y_tmin:
+                    roi = frame[y_tmin:y_tmax, x_tmin:x_tmax]
+                    overlay = roi.copy()
+                    shifted_pts = tri_pts - np.array([x_tmin, y_tmin])
+                    cv2.fillConvexPoly(overlay, shifted_pts, base, lineType=cv2.LINE_AA)
+                    cv2.addWeighted(overlay, 0.08, roi, 0.92, 0, dst=roi)
+
+        # 2. Outer Fingertip Perimeter Shield (Tip-to-Tip Arc Boundary)
+        for ta, tb in TIP_PAIRINGS:
+            _draw_web_arc(frame, pts[ta], pts[tb], palm_center, hot, thickness=1, sag=-0.25)
+
+        # 3. Inter-Finger Web Strands
+        for idx, (a, b) in enumerate(WEB_BRIDGES):
+            f_a = LANDMARK_FINGER_MAP.get(a, 0)
+            f_b = LANDMARK_FINGER_MAP.get(b, 0)
+            c0_a, c1_a = finger_theme_colors[f_a]
+            c0_b, c1_b = finger_theme_colors[f_b]
+            web_color = _lerp_color(c0_a, c1_b, 0.5)
+            _draw_web_arc(frame, pts[a], pts[b], palm_center, web_color, thickness=1, sag=0.32)
+
+        # 4. Main Skeletal Connections & Energy Pulses
+        for a, b in CONNECTIONS:
+            pa, pb = pts[a], pts[b]
+            da, db = DEPTH.get(a, 0.0), DEPTH.get(b, 0.0)
+
+            finger_id = LANDMARK_FINGER_MAP.get(b, LANDMARK_FINGER_MAP.get(a))
+            if finger_id is not None:
+                c0, c1 = finger_theme_colors[finger_id]
+                color = _lerp_color(c0, c1, (da + db) / 2.0)
             else:
-                _dotted_line(frame, pts[a], pts[b], color, thickness=2, gap=5, dash=9)
+                color = _lerp_color(base, hot, (da + db) / 2.0)
 
-        tips = {4, 8, 12, 16, 20}
+            cv2.line(frame, pa, pb, (10, 10, 10), 4, cv2.LINE_AA)
+            cv2.line(frame, pa, pb, color, 2, cv2.LINE_AA)
+
+            phase = (now * 2.5 + da * 0.7) % 1.0
+            px = int(pa[0] + (pb[0] - pa[0]) * phase)
+            py = int(pa[1] + (pb[1] - pa[1]) * phase)
+            cv2.circle(frame, (px, py), 2, hot, -1, cv2.LINE_AA)
+
+        # 5. Joint Nodes, Wrist Web-Shooter & Index Tip HUD Reticle
         for i, (x, y) in enumerate(pts):
-            color = LANDMARK_COLOR.get(i, (200, 200, 200))
-            radius = tip_r if i in tips or i == 0 else 3
-            cv2.circle(frame, (x, y), radius, color, -1, cv2.LINE_AA)
-    return frame
+            depth = DEPTH.get(i, 0.0)
+            finger_id = LANDMARK_FINGER_MAP.get(i)
 
+            if finger_id is not None:
+                c0, c1 = finger_theme_colors[finger_id]
+                node_color = _lerp_color(c0, c1, depth)
+            else:
+                node_color = _lerp_color(base, hot, depth)
+
+            if i in TIPS:
+                pulse = int(2.5 * math.sin(now * 7.0 + i))
+                tip_hot = finger_theme_colors[finger_id][1] if finger_id is not None else hot
+                ui.glow_dot(frame, (x, y), 12 + pulse, tip_hot, intensity=0.35)
+                cv2.circle(frame, (x, y), 5, (255, 255, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x, y), 3, tip_hot, -1, cv2.LINE_AA)
+
+                # Concentric HUD Reticles on Index Tip (Landmark 8)
+                if i == 8:
+                    rot_angle = (now * 140) % 360
+                    # Outer target ring
+                    cv2.circle(frame, (x, y), 20, hot, 1, cv2.LINE_AA)
+
+                    # Rotating orbital dots
+                    for deg in range(0, 360, 45):
+                        rad = math.radians(deg + rot_angle)
+                        rx = int(x + 14 * math.cos(rad))
+                        ry = int(y + 14 * math.sin(rad))
+                        if 0 <= rx < w and 0 <= ry < h:
+                            cv2.circle(frame, (rx, ry), 1, hot, -1, cv2.LINE_AA)
+
+                    # Target reticle ticks
+                    for deg in (0, 90, 180, 270):
+                        rad = math.radians(deg - rot_angle * 0.5)
+                        x1 = int(x + 16 * math.cos(rad))
+                        y1 = int(y + 16 * math.sin(rad))
+                        x2 = int(x + 24 * math.cos(rad))
+                        y2 = int(y + 24 * math.sin(rad))
+                        cv2.line(frame, (x1, y1), (x2, y2), hot, 1, cv2.LINE_AA)
+
+            elif i == 0:
+                ui.glow_dot(frame, (x, y), 16, hot, intensity=0.4)
+                cv2.circle(frame, (x, y), 7, hot, 2, cv2.LINE_AA)
+                cv2.circle(frame, (x, y), 3, base, -1, cv2.LINE_AA)
+            else:
+                r = 3 + int(depth * 3)
+                cv2.circle(frame, (x, y), r + 1, (10, 10, 10), 1, cv2.LINE_AA)
+                cv2.circle(frame, (x, y), r, node_color, -1, cv2.LINE_AA)
+
+    return frame
 
 def draw_hand_cursors(frame: np.ndarray, pointers, *, t: Optional[float] = None) -> np.ndarray:
     h, w = frame.shape[:2]
